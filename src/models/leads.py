@@ -1,7 +1,22 @@
 """Pydantic models for lead data structures."""
 
-from typing import Optional, List
+from datetime import datetime
+from typing import Optional, List, Dict, TYPE_CHECKING
 from pydantic import BaseModel, Field
+
+# Use forward reference to avoid circular import
+if TYPE_CHECKING:
+    from .pipeline_state import LeadProvenance
+
+
+class LeadProvenanceEmbed(BaseModel):
+    """Embedded provenance info to avoid circular imports."""
+    discovered_from_source: str = Field(..., description="Which source found this lead")
+    source_url: str = Field(..., description="Specific URL where lead was found")
+    source_priority: int = Field(1, description="Priority level of the source")
+    discovery_timestamp: datetime = Field(default_factory=datetime.now)
+    search_round: int = Field(1, description="Which iteration of persistence loop")
+    search_query: Optional[str] = Field(None, description="The query that found this lead")
 
 
 class Lead(BaseModel):
@@ -16,6 +31,16 @@ class Lead(BaseModel):
         description="Why they were picked (e.g., 'PET dosimetry mentioned')"
     )
     source_url: Optional[str] = Field(None, description="Source URL for this lead")
+    
+    # Provenance tracking for transparency
+    provenance: Optional[LeadProvenanceEmbed] = Field(
+        None,
+        description="Tracks exactly where this lead came from"
+    )
+    raw_search_rank: Optional[int] = Field(
+        None,
+        description="Position in original search results (1=first)"
+    )
 
 
 class ScoredLead(Lead):
@@ -46,6 +71,20 @@ class ScoredLead(Lead):
     reasoning_chain: str = Field(
         default="", 
         description="Chain-of-thought reasoning from the Analyst"
+    )
+    
+    # Enhanced scoring transparency
+    score_breakdown: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Detailed scoring breakdown: {'base_fit': 70, 'phase_bonus': +10, 'no_trigger_penalty': -5}"
+    )
+    score_explanation: str = Field(
+        default="",
+        description="Human-readable explanation of how the score was calculated"
+    )
+    scoring_timestamp: Optional[datetime] = Field(
+        None,
+        description="When the scoring was performed"
     )
 
 

@@ -4,11 +4,14 @@ import sys
 import streamlit as st
 from typing import List
 from functools import partial
+from datetime import datetime
+import uuid
 
 # Force immediate stdout flushing for print statements
 print = partial(print, flush=True)
 
 from src.models.leads import Lead, ScoredLead, DraftedLead
+from src.models.pipeline_state import PipelineState, SearchLedger
 from src.agents import (
     MockScoutAgent,
     MockAnalystAgent,
@@ -20,6 +23,7 @@ from src.agents import (
 from src.ui.sidebar import render_sidebar
 from src.ui.mission_control import render_mission_control
 from src.ui.war_room import render_war_room
+from src.ui.process_inspector import render_process_inspector
 
 
 # Page configuration
@@ -57,6 +61,10 @@ def initialize_session_state():
         "scored_leads": [],
         "drafted_leads": [],
         "use_mock": True,
+        # New fields for Glass Box transparency
+        "pipeline_state": None,
+        "search_ledger": None,
+        "top_of_funnel_leads": [],
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -82,7 +90,7 @@ def validate_api_keys() -> tuple[bool, str]:
 
 
 def run_hunt_pipeline(params: dict):
-    """Execute the full hunt pipeline: Scout -> Analyst -> Scribe."""
+    """Execute the full hunt pipeline: Scout -> Analyst -> Scribe with full transparency tracking."""
     st.session_state["is_processing"] = True
     st.session_state["processing_status"] = "Initializing hunt..."
     
@@ -92,12 +100,27 @@ def run_hunt_pipeline(params: dict):
     print(f"STARTING HUNT PIPELINE - Mode: {'MOCK' if use_mock else 'LIVE'}")
     print(f"{'='*60}")
     
+    # Initialize pipeline state for Glass Box transparency
+    pipeline_state = PipelineState(
+        hunt_id=str(uuid.uuid4()),
+        hunt_params={
+            "lead_count": params["lead_count"],
+            "therapeutic_focus": params["therapeutic_focus"],
+            "phase_preference": params["phase_preference"],
+            "geography": params["geography"],
+            "exclusions": params["exclusions"],
+        }
+    )
+    pipeline_state.record_stage_start("search")
+    st.session_state["pipeline_state"] = pipeline_state
+    
     # Validate API keys if not using mock
     if not use_mock:
         is_valid, error_msg = validate_api_keys()
         if not is_valid:
             print(f"ERROR: {error_msg}")
             st.error(error_msg)
+            pipeline_state.add_error(error_msg)
             st.session_state["is_processing"] = False
             return
         print("API keys validated successfully")
@@ -122,8 +145,8 @@ def run_hunt_pipeline(params: dict):
             )
             print(f"DeepSeek service initialized - R1: {deepseek.reasoning_model}, V3: {deepseek.drafting_model}")
         
-        # Phase 1: Scout - Discover leads
-        print("\n[PHASE 1] Starting Scout Agent...")
+        # Phase 1: Scout - Discover leads with persistence loop
+        print("\n[PHASE 1] Starting Scout Agent with Persistence Loop...")
         update_progress("Phase 1: Discovering companies...")
         
         if use_mock:
@@ -134,19 +157,45 @@ def run_hunt_pipeline(params: dict):
             scout = ScoutAgent(tavily, deepseek, on_progress=update_progress)
         
         print(f"Executing Scout with params: count={params['lead_count']}, focus={params['therapeutic_focus']}")
-        raw_leads = scout.execute(
+        
+        # Use execute_with_persistence for transparency tracking
+        raw_leads, search_ledger = scout.execute_with_persistence(
             count=params["lead_count"],
             focus=params["therapeutic_focus"],
             phase=", ".join(params["phase_preference"]),
             geography=params["geography"],
-            exclusions=params["exclusions"]
+            exclusions=params["exclusions"],
+            max_rounds=3
         )
-        print(f"Scout completed: {len(raw_leads)} leads found")
+        
+        print(f"Scout completed: {len(raw_leads)} leads found in {search_ledger.search_rounds} round(s)")
+        
+        # Update pipeline state with discovery results
+        pipeline_state.search_ledger = search_ledger
+        pipeline_state.top_of_funnel_count = len(raw_leads)
+        pipeline_state.top_of_funnel_companies = [lead.company_name for lead in raw_leads]
+        pipeline_state.record_stage_complete(
+            "discovery",
+            input_count=search_ledger.total_queries,
+            output_count=len(raw_leads),
+            details={
+                "total_queries": search_ledger.total_queries,
+                "total_results": search_ledger.total_results_found,
+                "unique_results": search_ledger.unique_results_found,
+                "search_rounds": search_ledger.search_rounds,
+            }
+        )
+        
+        # Store in session state
         st.session_state["raw_leads"] = raw_leads
+        st.session_state["search_ledger"] = search_ledger
+        st.session_state["top_of_funnel_leads"] = raw_leads
+        st.session_state["pipeline_state"] = pipeline_state
         
         if not raw_leads:
             print("WARNING: No leads found")
             update_progress("No leads found. Try adjusting your search criteria.")
+            pipeline_state.add_error("No leads found after persistence loop")
             st.session_state["is_processing"] = False
             st.rerun()
             return
@@ -154,6 +203,7 @@ def run_hunt_pipeline(params: dict):
         # Phase 2: Analyst - Score leads
         print(f"\n[PHASE 2] Starting Analyst Agent for {len(raw_leads)} leads...")
         update_progress(f"Phase 2: Scoring {len(raw_leads)} leads...")
+        pipeline_state.record_stage_start("scoring")
         
         if use_mock:
             print("Using MockAnalystAgent")
@@ -168,15 +218,33 @@ def run_hunt_pipeline(params: dict):
             icp_definition=params["icp_definition"]
         )
         print(f"Analyst completed: {len(scored_leads)} leads scored")
-        st.session_state["scored_leads"] = scored_leads
         
+        # Update pipeline state
         qualified_count = sum(1 for l in scored_leads if l.is_qualified)
+        pipeline_state.scored_count = len(scored_leads)
+        pipeline_state.qualified_count = qualified_count
+        pipeline_state.disqualified_count = len(scored_leads) - qualified_count
+        pipeline_state.record_stage_complete(
+            "scoring",
+            input_count=len(raw_leads),
+            output_count=qualified_count,
+            details={
+                "total_scored": len(scored_leads),
+                "qualified": qualified_count,
+                "disqualified": len(scored_leads) - qualified_count,
+                "avg_score": sum(l.icp_score for l in scored_leads) / len(scored_leads) if scored_leads else 0,
+            }
+        )
+        
+        st.session_state["scored_leads"] = scored_leads
+        st.session_state["pipeline_state"] = pipeline_state
+        
         print(f"Qualification results: {qualified_count}/{len(scored_leads)} qualified")
         
         if qualified_count == 0:
             print("WARNING: No leads qualified")
             update_progress(f"Scoring complete. No leads qualified (0/{len(scored_leads)} met threshold).")
-            # Still save scored leads for review
+            pipeline_state.add_error(f"No leads qualified: 0/{len(scored_leads)} met threshold")
             st.session_state["drafted_leads"] = []
             st.session_state["is_processing"] = False
             st.rerun()
@@ -185,6 +253,7 @@ def run_hunt_pipeline(params: dict):
         # Phase 3: Scribe - Draft outreach for qualified leads
         print(f"\n[PHASE 3] Starting Scribe Agent for {qualified_count} qualified leads...")
         update_progress(f"Phase 3: Drafting outreach for {qualified_count} qualified leads...")
+        pipeline_state.record_stage_start("drafting")
         
         if use_mock:
             print("Using MockScribeAgent")
@@ -199,7 +268,20 @@ def run_hunt_pipeline(params: dict):
             value_prop=params["value_prop"]
         )
         print(f"Scribe completed: {len(drafted_leads)} leads drafted")
+        
+        # Update pipeline state
+        pipeline_state.drafted_count = len(drafted_leads)
+        pipeline_state.record_stage_complete(
+            "drafting",
+            input_count=qualified_count,
+            output_count=len(drafted_leads),
+            details={
+                "drafts_generated": len(drafted_leads),
+            }
+        )
+        
         st.session_state["drafted_leads"] = drafted_leads
+        st.session_state["pipeline_state"] = pipeline_state
         
         print(f"\n{'='*60}")
         print(f"HUNT COMPLETE - {len(drafted_leads)} leads ready")
@@ -215,6 +297,9 @@ def run_hunt_pipeline(params: dict):
         error_trace = traceback.format_exc()
         print(error_trace)
         print(f"{'='*60}\n")
+        
+        pipeline_state.add_error(f"Pipeline error: {error_msg}")
+        st.session_state["pipeline_state"] = pipeline_state
         
         st.error(f"Hunt failed: {error_msg}")
         update_progress(f"Error: {error_msg}")
@@ -260,14 +345,17 @@ def main():
                 f.write("Calling run_hunt_pipeline...\n")
             run_hunt_pipeline(params)
     
-    # Main content tabs
-    tab1, tab2 = st.tabs(["Mission Control", "War Room"])
+    # Main content tabs - Added Process Inspector
+    tab1, tab2, tab3 = st.tabs(["Mission Control", "War Room", "Process Inspector"])
     
     with tab1:
         render_mission_control(on_start_hunt=None)  # Don't use callback, use session state instead
     
     with tab2:
         render_war_room()
+    
+    with tab3:
+        render_process_inspector()
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import pandas as pd
 from typing import List, Optional, Union
 
 from ..models.leads import DraftedLead, ScoredLead
+from .process_inspector import render_scoring_breakdown
 
 
 def get_score_color(score: int) -> str:
@@ -140,10 +141,21 @@ def render_war_room(leads: Optional[List[Union[DraftedLead, ScoredLead]]] = None
         table_data = []
         for lead in filtered_leads:
             trigger_text = lead.buying_signal if lead.buying_signal else "No trigger identified"
+            
+            # Get provenance info if available
+            source_name = "Unknown"
+            source_priority = "-"
+            search_round = "-"
+            if hasattr(lead, 'provenance') and lead.provenance:
+                source_name = lead.provenance.discovered_from_source
+                source_priority = f"P{lead.provenance.source_priority}"
+                search_round = lead.provenance.search_round
+            
             table_data.append({
                 "Company": lead.company_name,
                 "Phase": lead.clinical_phase,
                 "Score": f"{get_score_color(lead.icp_score)} {lead.icp_score}",
+                "Source": source_name,
                 "Therapeutic Area": lead.therapeutic_area,
                 "Trigger": trigger_text[:80] + "..." if len(trigger_text) > 80 else trigger_text,
                 "Offer": lead.recommended_offer,
@@ -161,6 +173,7 @@ def render_war_room(leads: Optional[List[Union[DraftedLead, ScoredLead]]] = None
                 "Company": st.column_config.TextColumn("Company", width="medium"),
                 "Phase": st.column_config.TextColumn("Phase", width="small"),
                 "Score": st.column_config.TextColumn("Score", width="small"),
+                "Source": st.column_config.TextColumn("Source", width="medium"),
                 "Therapeutic Area": st.column_config.TextColumn("Area", width="medium"),
                 "Trigger": st.column_config.TextColumn("Trigger Event", width="large"),
                 "Offer": st.column_config.TextColumn("Recommended Offer", width="medium"),
@@ -194,6 +207,27 @@ def render_lead_detail(lead: Union[DraftedLead, ScoredLead], index: int):
     
     is_drafted = isinstance(lead, DraftedLead)
     
+    # Lead provenance section (Glass Box transparency)
+    if hasattr(lead, 'provenance') and lead.provenance:
+        st.markdown("**Lead Provenance**")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Source", lead.provenance.discovered_from_source)
+        with col2:
+            st.metric("Priority", f"P{lead.provenance.source_priority}")
+        with col3:
+            st.metric("Search Round", lead.provenance.search_round)
+        with col4:
+            if hasattr(lead, 'raw_search_rank') and lead.raw_search_rank:
+                st.metric("Original Rank", f"#{lead.raw_search_rank}")
+            else:
+                st.metric("Original Rank", "-")
+        
+        if lead.provenance.source_url and lead.provenance.source_url != "unknown":
+            st.caption(f"Source URL: [{lead.provenance.source_url}]({lead.provenance.source_url})")
+        
+        st.divider()
+    
     # Two columns: Info and Reasoning
     col1, col2 = st.columns(2)
     
@@ -221,6 +255,11 @@ def render_lead_detail(lead: Union[DraftedLead, ScoredLead], index: int):
         
         st.write(f"**Buying Signal:** {lead.buying_signal or 'None identified'}")
         st.write(f"**Recommended Offer:** {lead.recommended_offer}")
+        
+        # Score breakdown (if available)
+        if hasattr(lead, 'score_breakdown') and lead.score_breakdown:
+            st.divider()
+            render_scoring_breakdown(lead)
     
     with col2:
         st.markdown("**The Math (Reasoning Chain)**")
@@ -235,6 +274,11 @@ def render_lead_detail(lead: Union[DraftedLead, ScoredLead], index: int):
             )
         else:
             st.info("No reasoning chain available")
+        
+        # Score explanation (if available and different from reasoning chain)
+        if hasattr(lead, 'score_explanation') and lead.score_explanation:
+            with st.expander("Score Explanation"):
+                st.write(lead.score_explanation)
     
     # Only show draft sections for DraftedLead
     if is_drafted and lead.is_qualified:
@@ -329,6 +373,21 @@ def generate_csv(leads: List[Union[DraftedLead, ScoredLead]]) -> str:
     # Flatten leads to DataFrame
     data = []
     for lead in leads:
+        # Provenance info
+        source_name = ""
+        source_priority = ""
+        search_round = ""
+        if hasattr(lead, 'provenance') and lead.provenance:
+            source_name = lead.provenance.discovered_from_source
+            source_priority = lead.provenance.source_priority
+            search_round = lead.provenance.search_round
+        
+        # Score breakdown
+        score_breakdown_str = ""
+        if hasattr(lead, 'score_breakdown') and lead.score_breakdown:
+            parts = [f"{k}: {v}" for k, v in lead.score_breakdown.items()]
+            score_breakdown_str = "; ".join(parts)
+        
         # Base fields (common to ScoredLead and DraftedLead)
         row = {
             "Company Name": lead.company_name,
@@ -337,7 +396,12 @@ def generate_csv(leads: List[Union[DraftedLead, ScoredLead]]) -> str:
             "Clinical Phase": lead.clinical_phase,
             "Imaging Signal": lead.imaging_signal,
             "Source URL": getattr(lead, 'source_url', '') or "",
+            "Discovery Source": source_name,
+            "Source Priority": source_priority,
+            "Search Round": search_round,
             "ICP Score": lead.icp_score,
+            "Score Breakdown": score_breakdown_str,
+            "Score Explanation": getattr(lead, 'score_explanation', '') or "",
             "Qualified": "Yes" if lead.is_qualified else "No",
             "Disqualification Reason": lead.disqualification_reason or "",
             "Buying Signal": lead.buying_signal,
