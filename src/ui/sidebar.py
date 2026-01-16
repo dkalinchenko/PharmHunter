@@ -8,6 +8,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def get_secret(key: str, default: str = "") -> str:
+    """Get a secret from st.secrets (Streamlit Cloud) or os.environ (.env file)."""
+    # First try st.secrets (for Streamlit Cloud deployment)
+    try:
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    
+    # Fall back to environment variables (for local development)
+    return os.getenv(key, default)
+
+
 def render_sidebar() -> dict:
     """
     Render the sidebar with API configuration options.
@@ -20,9 +33,9 @@ def render_sidebar() -> dict:
         
         st.subheader("API Keys")
         
-        # Get default values from .env file or session state
-        default_deepseek = os.getenv("DEEPSEEK_API_KEY", "") or st.session_state.get("deepseek_api_key", "")
-        default_tavily = os.getenv("TAVILY_API_KEY", "") or st.session_state.get("tavily_api_key", "")
+        # Get default values from st.secrets, .env file, or session state
+        default_deepseek = get_secret("DEEPSEEK_API_KEY") or st.session_state.get("deepseek_api_key", "")
+        default_tavily = get_secret("TAVILY_API_KEY") or st.session_state.get("tavily_api_key", "")
         
         deepseek_key = st.text_input(
             "DeepSeek API Key",
