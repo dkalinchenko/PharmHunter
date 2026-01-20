@@ -1,31 +1,43 @@
-"""Service for managing company history persistence and deduplication."""
+"""Service for managing company history persistence and deduplication with Supabase."""
 
 import json
 import os
 from datetime import datetime
-from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
+
+try:
+    from supabase import create_client, Client
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
+    print("Warning: supabase package not installed. Run: pip install supabase")
 
 from ..models.company_history import CompanyHistory, CompanyRecord, HuntSummary
 from ..models.leads import Lead, ScoredLead
 from ..utils.fuzzy_matcher import normalize_company_name, find_best_match, DEFAULT_MATCH_THRESHOLD
 
 
+def get_secret(key: str, default: str = "") -> str:
+    """Get a secret from st.secrets or environment variables."""
+    try:
+        import streamlit as st
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+
 class CompanyHistoryService:
     """
-    Service for managing company history with file-based persistence.
+    Service for managing company history with Supabase persistence.
     
     Handles:
-    - Loading/saving history to JSON file
+    - Loading/saving history to Supabase PostgreSQL
     - Adding new companies from search results
     - Checking for duplicates with fuzzy matching
     - Exporting history data
     """
-    
-    # Default storage locations
-    PRIMARY_STORAGE_DIR = Path.home() / ".pharmhunter"
-    FALLBACK_STORAGE_DIR = Path("./data")
-    HISTORY_FILENAME = "company_history.json"
     
     def __init__(self, match_threshold: int = DEFAULT_MATCH_THRESHOLD):
         """
@@ -36,35 +48,33 @@ class CompanyHistoryService:
         """
         self.match_threshold = match_threshold
         self._history: Optional[CompanyHistory] = None
-        self._storage_path: Optional[Path] = None
+        self._supabase: Optional[Client] = None
     
     @property
-    def storage_path(self) -> Path:
-        """Get the path to the history file, creating directory if needed."""
-        if self._storage_path is not None:
-            return self._storage_path
+    def supabase(self) -> Client:
+        """Get or create Supabase client."""
+        if self._supabase is not None:
+            return self._supabase
         
-        # Try primary location first (home directory)
-        try:
-            self.PRIMARY_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-            self._storage_path = self.PRIMARY_STORAGE_DIR / self.HISTORY_FILENAME
-            return self._storage_path
-        except (PermissionError, OSError):
-            pass
+        if not SUPABASE_AVAILABLE:
+            raise ImportError("Supabase package not installed. Run: pip install supabase")
         
-        # Fall back to app directory
-        try:
-            self.FALLBACK_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-            self._storage_path = self.FALLBACK_STORAGE_DIR / self.HISTORY_FILENAME
-            return self._storage_path
-        except (PermissionError, OSError):
-            # Last resort: current directory
-            self._storage_path = Path(self.HISTORY_FILENAME)
-            return self._storage_path
+        # Get credentials from secrets or environment
+        url = get_secret("SUPABASE_URL")
+        key = get_secret("SUPABASE_KEY")
+        
+        if not url or not key:
+            raise ValueError(
+                "Supabase credentials not found. Please add SUPABASE_URL and SUPABASE_KEY "
+                "to your .env file or Streamlit secrets."
+            )
+        
+        self._supabase = create_client(url, key)
+        return self._supabase
     
     def load_history(self) -> CompanyHistory:
         """
-        Load history from disk, creating new if not exists.
+        Load history from Supabase.
         
         Returns:
             CompanyHistory object
@@ -72,24 +82,64 @@ class CompanyHistoryService:
         if self._history is not None:
             return self._history
         
-        path = self.storage_path
-        
-        if path.exists():
-            try:
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                self._history = CompanyHistory.model_validate(data)
-                return self._history
-            except (json.JSONDecodeError, Exception) as e:
-                print(f"Warning: Could not load history file: {e}. Creating new history.")
-        
-        # Create new history
-        self._history = CompanyHistory()
-        return self._history
+        try:
+            # Load all companies
+            companies_result = self.supabase.table("companies").select("*").execute()
+            
+            # Convert Supabase records to CompanyRecord objects
+            companies = []
+            for record in companies_result.data:
+                companies.append(CompanyRecord(
+                    company_name=record["company_name"],
+                    normalized_name=record["normalized_name"],
+                    website=record.get("website"),
+                    first_seen=record["first_seen"],
+                    last_seen=record["last_seen"],
+                    times_discovered=record["times_discovered"],
+                    hunt_ids=record["hunt_ids"],
+                    therapeutic_areas=record["therapeutic_areas"],
+                    clinical_phases=record["clinical_phases"],
+                    icp_scores=record["icp_scores"],
+                    best_score=record.get("best_score"),
+                    was_qualified=record["was_qualified"],
+                    source_urls=record["source_urls"],
+                ))
+            
+            # Load hunt summaries
+            hunts_result = self.supabase.table("hunts").select("*").execute()
+            hunt_summary = {}
+            for record in hunts_result.data:
+                hunt_summary[record["hunt_id"]] = HuntSummary(
+                    hunt_id=record["hunt_id"],
+                    timestamp=record["timestamp"],
+                    companies_found=record["companies_found"],
+                    new_companies=record.get("new_companies", 0),
+                    duplicates_filtered=record.get("duplicates_filtered", 0),
+                    qualified_count=record["qualified_count"],
+                    params=record["params"],
+                )
+            
+            # Construct CompanyHistory object
+            self._history = CompanyHistory(
+                total_companies=len(companies),
+                total_hunts=len(hunt_summary),
+                companies=companies,
+                hunt_summary=hunt_summary,
+            )
+            
+            return self._history
+            
+        except Exception as e:
+            print(f"Warning: Could not load from Supabase: {e}. Creating new history.")
+            self._history = CompanyHistory()
+            return self._history
     
     def save_history(self, history: Optional[CompanyHistory] = None) -> bool:
         """
-        Save history to disk.
+        Save history to Supabase.
+        
+        Note: With Supabase, we typically upsert records individually.
+        This method is kept for compatibility but may not be heavily used.
         
         Args:
             history: CompanyHistory to save (uses cached if not provided)
@@ -97,34 +147,46 @@ class CompanyHistoryService:
         Returns:
             True if successful
         """
-        if history is not None:
-            self._history = history
+        # With Supabase, individual upserts are preferred
+        # This method is kept for interface compatibility
+        return True
+    
+    def _upsert_company(self, company: CompanyRecord) -> bool:
+        """
+        Insert or update a single company in Supabase.
         
-        if self._history is None:
-            return False
-        
-        self._history.last_updated = datetime.now()
-        
+        Args:
+            company: CompanyRecord to upsert
+            
+        Returns:
+            True if successful
+        """
         try:
-            path = self.storage_path
+            data = {
+                "company_name": company.company_name,
+                "normalized_name": company.normalized_name,
+                "website": company.website,
+                "first_seen": company.first_seen.isoformat(),
+                "last_seen": company.last_seen.isoformat(),
+                "times_discovered": company.times_discovered,
+                "hunt_ids": company.hunt_ids,
+                "therapeutic_areas": company.therapeutic_areas,
+                "clinical_phases": company.clinical_phases,
+                "icp_scores": company.icp_scores,
+                "best_score": company.best_score,
+                "was_qualified": company.was_qualified,
+                "source_urls": company.source_urls,
+            }
             
-            # Write to temp file first, then rename (atomic operation)
-            temp_path = path.with_suffix('.tmp')
+            # Upsert based on normalized_name (unique constraint)
+            self.supabase.table("companies").upsert(
+                data,
+                on_conflict="normalized_name"
+            ).execute()
             
-            with open(temp_path, 'w', encoding='utf-8') as f:
-                json.dump(
-                    self._history.model_dump(mode='json'),
-                    f,
-                    indent=2,
-                    default=str
-                )
-            
-            # Rename temp to final
-            temp_path.replace(path)
             return True
-            
         except Exception as e:
-            print(f"Error saving history: {e}")
+            print(f"Error upserting company {company.company_name}: {e}")
             return False
     
     def is_duplicate(
@@ -212,7 +274,7 @@ class CompanyHistoryService:
         hunt_params: Optional[Dict[str, Any]] = None
     ) -> int:
         """
-        Add companies from scored leads to history.
+        Add companies from scored leads to Supabase.
         
         Args:
             leads: List of ScoredLead objects
@@ -229,13 +291,13 @@ class CompanyHistoryService:
         for lead in leads:
             normalized = normalize_company_name(lead.company_name)
             
-            # Check if company already exists
+            # Check if company already exists in loaded history
             existing = history.get_company_by_normalized_name(normalized)
             
             if existing:
                 # Update existing record
                 existing.update_from_lead(lead, hunt_id)
-                history.add_or_update_company(existing)
+                self._upsert_company(existing)
             else:
                 # Create new record
                 new_record = CompanyRecord(
@@ -253,26 +315,33 @@ class CompanyHistoryService:
                     was_qualified=lead.is_qualified if hasattr(lead, 'is_qualified') else False,
                     source_urls=[lead.source_url] if lead.source_url else []
                 )
-                history.add_or_update_company(new_record)
+                self._upsert_company(new_record)
                 new_count += 1
             
             if hasattr(lead, 'is_qualified') and lead.is_qualified:
                 qualified_count += 1
         
-        # Add hunt summary
-        hunt_summary = HuntSummary(
-            hunt_id=hunt_id,
-            timestamp=datetime.now(),
-            companies_found=len(leads),
-            new_companies=new_count,
-            duplicates_filtered=0,  # Will be set by caller if needed
-            qualified_count=qualified_count,
-            params=hunt_params or {}
-        )
-        history.add_hunt_summary(hunt_summary)
+        # Add hunt summary to Supabase
+        try:
+            hunt_data = {
+                "hunt_id": hunt_id,
+                "timestamp": datetime.now().isoformat(),
+                "companies_found": len(leads),
+                "new_companies": new_count,
+                "duplicates_filtered": 0,  # Will be updated by caller if needed
+                "qualified_count": qualified_count,
+                "params": hunt_params or {},
+            }
+            
+            self.supabase.table("hunts").upsert(
+                hunt_data,
+                on_conflict="hunt_id"
+            ).execute()
+        except Exception as e:
+            print(f"Error saving hunt summary: {e}")
         
-        # Save to disk
-        self.save_history(history)
+        # Clear cache to force reload on next access
+        self._history = None
         
         return new_count
     
