@@ -13,6 +13,7 @@ from ..services.source_config import (
     get_expanded_therapeutic_areas,
     get_expanded_phases,
 )
+from ..services.company_history_service import CompanyHistoryService
 from .base_agent import BaseAgent
 
 
@@ -240,9 +241,33 @@ class ScoutAgent(BaseAgent):
         search_ledger.search_end_time = datetime.now()
         search_ledger.unique_results_found = len(all_leads)
         
-        self.report_progress(f"Search complete: {len(all_leads)} leads from {search_ledger.total_queries} queries across {search_ledger.search_rounds} round(s)")
+        # Filter out duplicates from company history
+        self.report_progress("Checking against company history for duplicates...")
+        history_service = CompanyHistoryService()
         
-        return all_leads[:count], search_ledger
+        filtered_leads, duplicate_count, duplicate_details = history_service.filter_duplicates(all_leads)
+        
+        if duplicate_count > 0:
+            self.report_progress(f"Filtered out {duplicate_count} companies already in history")
+            for dup in duplicate_details[:3]:  # Show first 3 duplicates
+                matched_with = dup.get('matched_with', 'batch duplicate')
+                score = dup.get('match_score', 100)
+                self.report_progress(f"  - Skipped '{dup['company_name']}' (matched '{matched_with}' at {score}%)")
+            
+            if duplicate_count > 3:
+                self.report_progress(f"  - ... and {duplicate_count - 3} more duplicates")
+        
+        # Store duplicate info in search ledger for transparency
+        search_ledger.unique_results_found = len(filtered_leads)
+        search_ledger.duplicates_filtered = duplicate_count
+        search_ledger.duplicate_details = duplicate_details
+        
+        self.report_progress(
+            f"Search complete: {len(filtered_leads)} new leads from {search_ledger.total_queries} queries "
+            f"({duplicate_count} duplicates filtered)"
+        )
+        
+        return filtered_leads[:count], search_ledger
     
     def _search_priority_1(
         self,

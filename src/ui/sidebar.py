@@ -2,7 +2,10 @@
 
 import streamlit as st
 import os
+from datetime import datetime
 from dotenv import load_dotenv
+
+from ..services.company_history_service import CompanyHistoryService
 
 # Load environment variables from .env file
 load_dotenv()
@@ -99,6 +102,30 @@ def render_sidebar() -> dict:
             # Validate API keys
             if not deepseek_key or not tavily_key:
                 st.warning("Enter both API keys to use live mode")
+        
+        st.divider()
+        
+        # Company History section
+        st.subheader("Company History")
+        
+        history_service = CompanyHistoryService()
+        history = history_service.load_history()
+        
+        st.caption(f"{history.total_companies} companies | {history.total_hunts} hunts")
+        
+        # Export button
+        if history.total_companies > 0:
+            history_json = history_service.export_json()
+            st.download_button(
+                "Export History (JSON)",
+                data=history_json,
+                file_name=f"pharmhunter_history_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                mime="application/json",
+                use_container_width=True,
+                type="secondary"
+            )
+        else:
+            st.info("No history to export yet")
         
         st.divider()
         

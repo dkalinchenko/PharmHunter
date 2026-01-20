@@ -8,6 +8,11 @@ from .pipeline_state import (
     StageData,
     PipelineState,
 )
+from .company_history import (
+    CompanyRecord,
+    HuntSummary,
+    CompanyHistory,
+)
 
 __all__ = [
     "Lead",
@@ -19,4 +24,7 @@ __all__ = [
     "LeadProvenance",
     "StageData",
     "PipelineState",
+    "CompanyRecord",
+    "HuntSummary",
+    "CompanyHistory",
 ]

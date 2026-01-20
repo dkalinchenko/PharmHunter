@@ -32,6 +32,10 @@ class SearchLedger(BaseModel):
     search_start_time: Optional[datetime] = Field(None)
     search_end_time: Optional[datetime] = Field(None)
     
+    # Duplicate tracking from Company History
+    duplicates_filtered: int = Field(0, description="Companies filtered as already in history")
+    duplicate_details: List[Dict] = Field(default_factory=list, description="Details of each filtered duplicate")
+    
     def add_source_record(self, record: SourceRecord):
         """Add a source record and update totals."""
         self.sources_queried.append(record)
@@ -80,6 +84,11 @@ class PipelineState(BaseModel):
     # Top of funnel (before filtering)
     top_of_funnel_count: int = Field(0)
     top_of_funnel_companies: List[str] = Field(default_factory=list)
+    
+    # Duplicate tracking (Company History integration)
+    duplicates_filtered: int = Field(0, description="Companies filtered as duplicates from history")
+    new_companies_found: int = Field(0, description="Companies not previously in history")
+    duplicate_details: List[Dict] = Field(default_factory=list, description="Details of filtered duplicates")
     
     # Post-scoring
     scored_count: int = Field(0)

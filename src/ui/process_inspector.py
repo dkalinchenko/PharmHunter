@@ -22,22 +22,25 @@ def render_process_inspector():
         return
     
     # Summary metrics at the top
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("Hunt ID", pipeline_state.hunt_id[:8] + "...")
     with col2:
         st.metric("Total Queries", pipeline_state.search_ledger.total_queries if pipeline_state.search_ledger else 0)
     with col3:
-        st.metric("Top of Funnel", pipeline_state.top_of_funnel_count)
+        st.metric("New Companies", pipeline_state.new_companies_found)
     with col4:
+        st.metric("Duplicates Filtered", pipeline_state.duplicates_filtered)
+    with col5:
         st.metric("Qualified", pipeline_state.qualified_count)
     
     st.divider()
     
     # Tabbed view for different inspection areas
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "Search Ledger",
         "Top of Funnel",
+        "Duplicates Filtered",
         "Pipeline Timeline",
         "Errors"
     ])
@@ -49,9 +52,12 @@ def render_process_inspector():
         render_top_of_funnel(pipeline_state)
     
     with tab3:
-        render_pipeline_timeline(pipeline_state)
+        render_duplicates_filtered(pipeline_state)
     
     with tab4:
+        render_pipeline_timeline(pipeline_state)
+    
+    with tab5:
         render_errors(pipeline_state)
 
 
@@ -213,6 +219,66 @@ def render_top_of_funnel(pipeline_state: PipelineState):
             lead = next((l for l in raw_leads if l.company_name == selected_company), None)
             if lead:
                 st.json(lead.model_dump(exclude_none=True, mode="json"))
+
+
+def render_duplicates_filtered(pipeline_state: PipelineState):
+    """Display companies that were filtered as duplicates."""
+    st.subheader("Duplicates Filtered")
+    st.caption("Companies skipped because they were already in history")
+    
+    duplicates = pipeline_state.duplicate_details
+    
+    if not duplicates:
+        st.success("No duplicates were filtered in this hunt.")
+        st.info("This means all discovered companies were new to your history.")
+        return
+    
+    st.info(f"{len(duplicates)} companies were filtered as duplicates")
+    
+    # Build table
+    table_data = []
+    for dup in duplicates:
+        table_data.append({
+            "Company": dup.get("company_name", "Unknown"),
+            "Matched With": dup.get("matched_with", "batch duplicate"),
+            "Match Score": f"{dup.get('match_score', 0)}%",
+            "Reason": dup.get("reason", "unknown"),
+            "Times Seen Before": dup.get("times_discovered", "-"),
+            "Last Seen": dup.get("last_seen", "-")[:10] if dup.get("last_seen") else "-"
+        })
+    
+    df = pd.DataFrame(table_data)
+    
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Company": st.column_config.TextColumn("Company", width="medium"),
+            "Matched With": st.column_config.TextColumn("Matched With", width="medium"),
+            "Match Score": st.column_config.TextColumn("Score", width="small"),
+            "Reason": st.column_config.TextColumn("Reason", width="small"),
+            "Times Seen Before": st.column_config.TextColumn("Times Seen", width="small"),
+            "Last Seen": st.column_config.TextColumn("Last Seen", width="small"),
+        }
+    )
+    
+    # Explanation
+    with st.expander("About Duplicate Detection"):
+        st.markdown("""
+        **How duplicates are detected:**
+        
+        - **Exact Match**: Company names that match exactly (case-insensitive)
+        - **Fuzzy Match**: Company names that are similar (≥85% similarity)
+        - **Batch Duplicate**: Same company appearing multiple times in search results
+        
+        **Normalization Rules:**
+        - Company suffixes (Inc, LLC, Ltd, Corp) are removed
+        - Punctuation and extra whitespace are removed
+        - Comparison is case-insensitive
+        
+        **Example:** "Radiant Therapeutics, Inc." matches "Radiant Therapeutics"
+        """)
 
 
 def render_pipeline_timeline(pipeline_state: PipelineState):

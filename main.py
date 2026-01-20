@@ -20,10 +20,12 @@ from src.agents import (
     AnalystAgent,
     ScribeAgent,
 )
+from src.services.company_history_service import CompanyHistoryService
 from src.ui.sidebar import render_sidebar
 from src.ui.mission_control import render_mission_control
 from src.ui.war_room import render_war_room
 from src.ui.process_inspector import render_process_inspector
+from src.ui.company_history import render_company_history
 
 
 # Page configuration
@@ -174,6 +176,12 @@ def run_hunt_pipeline(params: dict):
         pipeline_state.search_ledger = search_ledger
         pipeline_state.top_of_funnel_count = len(raw_leads)
         pipeline_state.top_of_funnel_companies = [lead.company_name for lead in raw_leads]
+        
+        # Track duplicate filtering from company history
+        pipeline_state.duplicates_filtered = search_ledger.duplicates_filtered
+        pipeline_state.new_companies_found = len(raw_leads)
+        pipeline_state.duplicate_details = search_ledger.duplicate_details
+        
         pipeline_state.record_stage_complete(
             "discovery",
             input_count=search_ledger.total_queries,
@@ -183,6 +191,7 @@ def run_hunt_pipeline(params: dict):
                 "total_results": search_ledger.total_results_found,
                 "unique_results": search_ledger.unique_results_found,
                 "search_rounds": search_ledger.search_rounds,
+                "duplicates_filtered": search_ledger.duplicates_filtered,
             }
         )
         
@@ -238,6 +247,16 @@ def run_hunt_pipeline(params: dict):
         
         st.session_state["scored_leads"] = scored_leads
         st.session_state["pipeline_state"] = pipeline_state
+        
+        # Save companies to history for future deduplication
+        print("Saving companies to history...")
+        history_service = CompanyHistoryService()
+        new_companies_added = history_service.add_companies(
+            scored_leads,
+            hunt_id=pipeline_state.hunt_id,
+            hunt_params=params
+        )
+        print(f"Added {new_companies_added} new companies to history (total: {history_service.get_company_count()})")
         
         print(f"Qualification results: {qualified_count}/{len(scored_leads)} qualified")
         
@@ -345,8 +364,8 @@ def main():
                 f.write("Calling run_hunt_pipeline...\n")
             run_hunt_pipeline(params)
     
-    # Main content tabs - Added Process Inspector
-    tab1, tab2, tab3 = st.tabs(["Mission Control", "War Room", "Process Inspector"])
+    # Main content tabs - Added Process Inspector and Company History
+    tab1, tab2, tab3, tab4 = st.tabs(["Mission Control", "War Room", "Process Inspector", "Company History"])
     
     with tab1:
         render_mission_control(on_start_hunt=None)  # Don't use callback, use session state instead
@@ -356,6 +375,9 @@ def main():
     
     with tab3:
         render_process_inspector()
+    
+    with tab4:
+        render_company_history()
 
 
 if __name__ == "__main__":

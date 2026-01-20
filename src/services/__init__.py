@@ -8,6 +8,7 @@ from .source_config import (
     get_expanded_therapeutic_areas,
     get_expanded_phases,
 )
+from .company_history_service import CompanyHistoryService
 
 __all__ = [
     "TavilyService",
@@ -16,4 +17,5 @@ __all__ = [
     "SourcePriority",
     "get_expanded_therapeutic_areas",
     "get_expanded_phases",
+    "CompanyHistoryService",
 ]
