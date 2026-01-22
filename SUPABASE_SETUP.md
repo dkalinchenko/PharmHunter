@@ -5,7 +5,7 @@ This application uses Supabase for persistent company history storage. Follow th
 ## Step 1: Create Database Tables
 
 Go to your Supabase SQL Editor:
-https://ptehtflcnskwwhfmksoc.supabase.co/project/default/sql
+https://[YOUR_SUPABASE_PROJECT_ID].supabase.co/project/default/sql
 
 Copy and paste the contents of `supabase_schema.sql` and run it. This will create:
 
@@ -24,10 +24,10 @@ After running the schema, verify the tables exist:
 
 ### For Local Development:
 
-Your credentials are already in `.env`:
+Add your credentials to `.env`:
 ```
-SUPABASE_URL=https://ptehtflcnskwwhfmksoc.supabase.co
-SUPABASE_KEY=sb_publishable_hO_YGYBND2ighlLaLcEu9Q_GZjo9PSO
+SUPABASE_URL=your_supabase_project_url_here
+SUPABASE_KEY=your_supabase_anon_key_here
 ```
 
 ### For Streamlit Cloud:
@@ -37,10 +37,10 @@ SUPABASE_KEY=sb_publishable_hO_YGYBND2ighlLaLcEu9Q_GZjo9PSO
 3. Add these values:
 
 ```toml
-DEEPSEEK_API_KEY = "sk-a0ac094f977c465bb78255e8d6b2c1a2"
-TAVILY_API_KEY = "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"
-SUPABASE_URL = "https://ptehtflcnskwwhfmksoc.supabase.co"
-SUPABASE_KEY = "sb_publishable_hO_YGYBND2ighlLaLcEu9Q_GZjo9PSO"
+DEEPSEEK_API_KEY = "your_deepseek_api_key_here"
+TAVILY_API_KEY = "your_tavily_api_key_here"
+SUPABASE_URL = "your_supabase_project_url_here"
+SUPABASE_KEY = "your_supabase_anon_key_here"
 ```
 
 ## Step 4: Test Locally
