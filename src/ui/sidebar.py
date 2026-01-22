@@ -36,31 +36,26 @@ def render_sidebar() -> dict:
         
         st.subheader("API Keys")
         
-        # Get default values from st.secrets, .env file, or session state
-        default_deepseek = get_secret("DEEPSEEK_API_KEY") or st.session_state.get("deepseek_api_key", "")
-        default_tavily = get_secret("TAVILY_API_KEY") or st.session_state.get("tavily_api_key", "")
+        # Load keys from secrets/env (never display them)
+        deepseek_key = get_secret("DEEPSEEK_API_KEY")
+        tavily_key = get_secret("TAVILY_API_KEY")
         
-        deepseek_key = st.text_input(
-            "DeepSeek API Key",
-            type="password",
-            value=default_deepseek,
-            key="deepseek_key_input",
-            help="Required for lead scoring and outreach drafting (auto-loaded from .env if present)"
-        )
-        
-        tavily_key = st.text_input(
-            "Tavily API Key",
-            type="password",
-            value=default_tavily,
-            key="tavily_key_input",
-            help="Required for company discovery search (auto-loaded from .env if present)"
-        )
-        
-        # Store keys in session state
+        # Show status indicators instead of key inputs
         if deepseek_key:
-            st.session_state["deepseek_api_key"] = deepseek_key
+            st.success("✓ DeepSeek API Key: Loaded from environment")
+        else:
+            st.error("✗ DeepSeek API Key: Not found")
+            st.caption("Add DEEPSEEK_API_KEY to .env file or Streamlit secrets")
+        
         if tavily_key:
-            st.session_state["tavily_api_key"] = tavily_key
+            st.success("✓ Tavily API Key: Loaded from environment")
+        else:
+            st.error("✗ Tavily API Key: Not found")
+            st.caption("Add TAVILY_API_KEY to .env file or Streamlit secrets")
+        
+        # Store keys in session state (but never show them)
+        st.session_state["deepseek_api_key"] = deepseek_key
+        st.session_state["tavily_api_key"] = tavily_key
         
         st.divider()
         
