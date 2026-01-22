@@ -31,9 +31,13 @@ try:
     deepseek = DeepSeekService(deepseek_key)
     print("✅ Services initialized", flush=True)
 except Exception as e:
-    print(f"❌ Initialization failed: {e}", flush=True)
-    import traceback
-    traceback.print_exc()
+    # Sanitize error to avoid exposing API keys
+    error_msg = str(e)
+    if deepseek_key:
+        error_msg = error_msg.replace(deepseek_key, "***API_KEY***")
+    if tavily_key:
+        error_msg = error_msg.replace(tavily_key, "***API_KEY***")
+    print(f"❌ Initialization failed: {error_msg}", flush=True)
     sys.exit(1)
 
 # Test 4: Test Tavily search
