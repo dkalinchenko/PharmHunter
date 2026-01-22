@@ -86,10 +86,10 @@ class DeepSeekService:
             return content
             
         except Exception as e:
-            print(f"[DeepSeek] ERROR: {e}")
-            import traceback
-            print(traceback.format_exc())
-            raise
+            # Sanitize error message to avoid exposing API keys
+            error_msg = str(e).replace(self.api_key, "***API_KEY***") if self.api_key else str(e)
+            print(f"[DeepSeek] ERROR: {error_msg}")
+            raise Exception(f"DeepSeek API error: {error_msg}")
     
     def call_r1(
         self,

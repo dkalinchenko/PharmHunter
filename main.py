@@ -316,13 +316,18 @@ def run_hunt_pipeline(params: dict):
         update_progress(f"Hunt complete! {len(drafted_leads)} leads ready for review.")
         
     except Exception as e:
+        # Sanitize error message to avoid exposing API keys
         error_msg = str(e)
+        deepseek_key = st.session_state.get("deepseek_api_key", "")
+        tavily_key = st.session_state.get("tavily_api_key", "")
+        
+        if deepseek_key:
+            error_msg = error_msg.replace(deepseek_key, "***DEEPSEEK_KEY***")
+        if tavily_key:
+            error_msg = error_msg.replace(tavily_key, "***TAVILY_KEY***")
+        
         print(f"\n{'='*60}")
-        print(f"ERROR IN PIPELINE:")
-        print(f"{'='*60}")
-        import traceback
-        error_trace = traceback.format_exc()
-        print(error_trace)
+        print(f"ERROR IN PIPELINE: {error_msg}")
         print(f"{'='*60}\n")
         
         pipeline_state.add_error(f"Pipeline error: {error_msg}")

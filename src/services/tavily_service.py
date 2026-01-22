@@ -80,10 +80,9 @@ class TavilyService:
             return results
             
         except Exception as e:
-            # Log error and return empty results
-            print(f"[Tavily] ERROR: {e}")
-            import traceback
-            print(traceback.format_exc())
+            # Sanitize error message to avoid exposing API keys
+            error_msg = str(e).replace(self.api_key, "***API_KEY***") if self.api_key else str(e)
+            print(f"[Tavily] ERROR: {error_msg}")
             return []
     
     def search_with_retry(

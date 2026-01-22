@@ -44,9 +44,9 @@ try:
     if results:
         print(f"   First result: {results[0].get('title', 'No title')}", flush=True)
 except Exception as e:
-    print(f"❌ Tavily search failed: {e}", flush=True)
-    import traceback
-    traceback.print_exc()
+    # Sanitize error to avoid exposing API keys
+    error_msg = str(e).replace(tavily_key, "***API_KEY***") if tavily_key else str(e)
+    print(f"❌ Tavily search failed: {error_msg}", flush=True)
 
 # Test 5: Test DeepSeek V3
 print("\n[TEST 5] Testing DeepSeek V3...", flush=True)
@@ -58,9 +58,9 @@ try:
     print(f"✅ DeepSeek V3 returned {len(response)} chars", flush=True)
     print(f"   Response preview: {response[:100]}...", flush=True)
 except Exception as e:
-    print(f"❌ DeepSeek V3 failed: {e}", flush=True)
-    import traceback
-    traceback.print_exc()
+    # Sanitize error to avoid exposing API keys
+    error_msg = str(e).replace(deepseek_key, "***API_KEY***") if deepseek_key else str(e)
+    print(f"❌ DeepSeek V3 failed: {error_msg}", flush=True)
 
 # Test 6: Test DeepSeek R1
 print("\n[TEST 6] Testing DeepSeek R1...", flush=True)
@@ -72,9 +72,9 @@ try:
     print(f"✅ DeepSeek R1 returned {len(response)} chars", flush=True)
     print(f"   Response preview: {response[:100]}...", flush=True)
 except Exception as e:
-    print(f"❌ DeepSeek R1 failed: {e}", flush=True)
-    import traceback
-    traceback.print_exc()
+    # Sanitize error to avoid exposing API keys
+    error_msg = str(e).replace(deepseek_key, "***API_KEY***") if deepseek_key else str(e)
+    print(f"❌ DeepSeek R1 failed: {error_msg}", flush=True)
 
 print("\n" + "="*60, flush=True)
 print("API CONNECTION TEST COMPLETE", flush=True)
