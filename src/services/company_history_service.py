@@ -120,19 +120,39 @@ class CompanyHistoryService:
                         encounter = HuntEncounter(
                             hunt_id=enc_record["hunt_id"],
                             timestamp=enc_record["timestamp"],
+                            # Basic
                             therapeutic_area=enc_record.get("therapeutic_area"),
                             clinical_phase=enc_record.get("clinical_phase"),
+                            imaging_signal=enc_record.get("imaging_signal"),
                             source_url=enc_record.get("source_url"),
+                            # Scoring
                             icp_score=enc_record.get("icp_score"),
                             score_breakdown=enc_record.get("score_breakdown"),
                             score_explanation=enc_record.get("score_explanation"),
                             is_qualified=enc_record.get("is_qualified", False),
-                            email_subject=enc_record.get("email_subject"),
-                            email_body=enc_record.get("email_body"),
+                            disqualification_reason=enc_record.get("disqualification_reason"),
+                            buying_signal=enc_record.get("buying_signal"),
+                            recommended_offer=enc_record.get("recommended_offer"),
+                            reasoning_chain=enc_record.get("reasoning_chain"),
+                            scoring_timestamp=enc_record.get("scoring_timestamp"),
+                            # Contact info
+                            contact_persona=enc_record.get("contact_persona"),
+                            contact_name=enc_record.get("contact_name"),
+                            contact_title=enc_record.get("contact_title"),
+                            contact_linkedin=enc_record.get("contact_linkedin"),
+                            # Messages
+                            email_subject_options=enc_record.get("email_subject_options"),
+                            email_body_primary=enc_record.get("email_body_primary"),
+                            email_variant_1=enc_record.get("email_variant_1"),
+                            email_variant_2=enc_record.get("email_variant_2"),
+                            linkedin_message=enc_record.get("linkedin_message"),
+                            follow_up_email=enc_record.get("follow_up_email"),
                             personalization_notes=enc_record.get("personalization_notes"),
+                            # Provenance
                             discovery_source=enc_record.get("discovery_source"),
                             source_priority=enc_record.get("source_priority"),
                             search_round=enc_record.get("search_round"),
+                            raw_search_rank=enc_record.get("raw_search_rank"),
                         )
                         company_map[company_id].encounters.append(encounter)
             except Exception as e:
@@ -242,19 +262,39 @@ class CompanyHistoryService:
                 "company_id": company_id,
                 "hunt_id": encounter.hunt_id,
                 "timestamp": encounter.timestamp.isoformat(),
+                # Basic
                 "therapeutic_area": encounter.therapeutic_area,
                 "clinical_phase": encounter.clinical_phase,
+                "imaging_signal": encounter.imaging_signal,
                 "source_url": encounter.source_url,
+                # Scoring
                 "icp_score": encounter.icp_score,
                 "score_breakdown": encounter.score_breakdown,
                 "score_explanation": encounter.score_explanation,
                 "is_qualified": encounter.is_qualified,
-                "email_subject": encounter.email_subject,
-                "email_body": encounter.email_body,
+                "disqualification_reason": encounter.disqualification_reason,
+                "buying_signal": encounter.buying_signal,
+                "recommended_offer": encounter.recommended_offer,
+                "reasoning_chain": encounter.reasoning_chain,
+                "scoring_timestamp": encounter.scoring_timestamp.isoformat() if encounter.scoring_timestamp else None,
+                # Contact info
+                "contact_persona": encounter.contact_persona,
+                "contact_name": encounter.contact_name,
+                "contact_title": encounter.contact_title,
+                "contact_linkedin": encounter.contact_linkedin,
+                # Messages
+                "email_subject_options": encounter.email_subject_options,
+                "email_body_primary": encounter.email_body_primary,
+                "email_variant_1": encounter.email_variant_1,
+                "email_variant_2": encounter.email_variant_2,
+                "linkedin_message": encounter.linkedin_message,
+                "follow_up_email": encounter.follow_up_email,
                 "personalization_notes": encounter.personalization_notes,
+                # Provenance
                 "discovery_source": encounter.discovery_source,
                 "source_priority": encounter.source_priority,
                 "search_round": encounter.search_round,
+                "raw_search_rank": encounter.raw_search_rank,
             }
             
             self.supabase.table("encounters").insert(data).execute()

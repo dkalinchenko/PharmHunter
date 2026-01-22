@@ -11,26 +11,43 @@ class HuntEncounter(BaseModel):
     hunt_id: str = Field(..., description="ID of the hunt where encountered")
     timestamp: datetime = Field(default_factory=datetime.now, description="When encountered")
     
-    # Basic lead info
+    # Basic lead info (FROM LEAD MODEL)
     therapeutic_area: Optional[str] = Field(None, description="Therapeutic area from this hunt")
     clinical_phase: Optional[str] = Field(None, description="Clinical phase from this hunt")
+    imaging_signal: Optional[str] = Field(None, description="Why company was picked")
     source_url: Optional[str] = Field(None, description="Source URL from this hunt")
     
-    # Scoring details (from Analyst)
+    # Scoring details (FROM SCOREDLEAD MODEL)
     icp_score: Optional[int] = Field(None, description="ICP score from this hunt")
     score_breakdown: Optional[Dict[str, int]] = Field(None, description="Detailed score breakdown")
     score_explanation: Optional[str] = Field(None, description="Why this score was given")
     is_qualified: bool = Field(False, description="Whether qualified in this hunt")
+    disqualification_reason: Optional[str] = Field(None, description="Why rejected if not qualified")
+    buying_signal: Optional[str] = Field(None, description="The 'Why Now' trigger")
+    recommended_offer: Optional[str] = Field(None, description="Best consulting offer")
+    reasoning_chain: Optional[str] = Field(None, description="Full chain-of-thought analysis")
+    scoring_timestamp: Optional[datetime] = Field(None, description="When scored")
     
-    # Drafted messages (from Scribe)
-    email_subject: Optional[str] = Field(None, description="Email subject line")
-    email_body: Optional[str] = Field(None, description="Email body content")
+    # Contact info (FROM DRAFTEDLEAD MODEL)
+    contact_persona: Optional[str] = Field(None, description="Target persona type")
+    contact_name: Optional[str] = Field(None, description="Actual contact name")
+    contact_title: Optional[str] = Field(None, description="Contact job title")
+    contact_linkedin: Optional[str] = Field(None, description="LinkedIn profile URL")
+    
+    # Drafted messages (FROM DRAFTEDLEAD MODEL) - EXPANDED
+    email_subject_options: Optional[List[str]] = Field(None, description="All 6 subject line variants")
+    email_body_primary: Optional[str] = Field(None, description="Primary email (120-180 words)")
+    email_variant_1: Optional[str] = Field(None, description="Variant 1: De-risk POC angle")
+    email_variant_2: Optional[str] = Field(None, description="Variant 2: Scale-up angle")
+    linkedin_message: Optional[str] = Field(None, description="LinkedIn message (350 chars)")
+    follow_up_email: Optional[str] = Field(None, description="Follow-up for 5-7 days later")
     personalization_notes: Optional[str] = Field(None, description="Personalization rationale")
     
-    # Provenance
-    discovery_source: Optional[str] = Field(None, description="Where discovered (e.g., 'ClinicalTrials.gov')")
+    # Provenance (FROM LEAD MODEL)
+    discovery_source: Optional[str] = Field(None, description="Where discovered")
     source_priority: Optional[str] = Field(None, description="Source priority tier")
-    search_round: Optional[int] = Field(None, description="Which search round found it")
+    search_round: Optional[int] = Field(None, description="Which search round")
+    raw_search_rank: Optional[int] = Field(None, description="Position in search results")
 
 
 class CompanyRecord(BaseModel):
@@ -96,11 +113,13 @@ class CompanyRecord(BaseModel):
             timestamp=datetime.now(),
         )
         
-        # Extract all available data from the lead
+        # Basic lead info
         if hasattr(lead, 'therapeutic_area'):
             encounter.therapeutic_area = lead.therapeutic_area
         if hasattr(lead, 'clinical_phase'):
             encounter.clinical_phase = lead.clinical_phase
+        if hasattr(lead, 'imaging_signal'):
+            encounter.imaging_signal = lead.imaging_signal
         if hasattr(lead, 'source_url'):
             encounter.source_url = lead.source_url
         
@@ -113,21 +132,50 @@ class CompanyRecord(BaseModel):
             encounter.score_explanation = lead.score_explanation
         if hasattr(lead, 'is_qualified'):
             encounter.is_qualified = lead.is_qualified
+        if hasattr(lead, 'disqualification_reason'):
+            encounter.disqualification_reason = lead.disqualification_reason
+        if hasattr(lead, 'buying_signal'):
+            encounter.buying_signal = lead.buying_signal
+        if hasattr(lead, 'recommended_offer'):
+            encounter.recommended_offer = lead.recommended_offer
+        if hasattr(lead, 'reasoning_chain'):
+            encounter.reasoning_chain = lead.reasoning_chain
+        if hasattr(lead, 'scoring_timestamp'):
+            encounter.scoring_timestamp = lead.scoring_timestamp
+        
+        # Contact info
+        if hasattr(lead, 'contact_persona'):
+            encounter.contact_persona = lead.contact_persona
+        if hasattr(lead, 'contact_name'):
+            encounter.contact_name = lead.contact_name
+        if hasattr(lead, 'contact_title'):
+            encounter.contact_title = lead.contact_title
+        if hasattr(lead, 'contact_linkedin'):
+            encounter.contact_linkedin = lead.contact_linkedin
         
         # Drafted messages
-        if hasattr(lead, 'email_subject'):
-            encounter.email_subject = lead.email_subject
-        if hasattr(lead, 'email_body'):
-            encounter.email_body = lead.email_body
+        if hasattr(lead, 'email_subject_options'):
+            encounter.email_subject_options = lead.email_subject_options
+        if hasattr(lead, 'email_body_primary'):
+            encounter.email_body_primary = lead.email_body_primary
+        if hasattr(lead, 'email_variant_1'):
+            encounter.email_variant_1 = lead.email_variant_1
+        if hasattr(lead, 'email_variant_2'):
+            encounter.email_variant_2 = lead.email_variant_2
+        if hasattr(lead, 'linkedin_message'):
+            encounter.linkedin_message = lead.linkedin_message
+        if hasattr(lead, 'follow_up_email'):
+            encounter.follow_up_email = lead.follow_up_email
         if hasattr(lead, 'personalization_notes'):
             encounter.personalization_notes = lead.personalization_notes
         
         # Provenance
-        if hasattr(lead, 'provenance'):
-            if lead.provenance:
-                encounter.discovery_source = lead.provenance.discovery_source
-                encounter.source_priority = lead.provenance.source_priority
-                encounter.search_round = lead.provenance.search_round
+        if hasattr(lead, 'provenance') and lead.provenance:
+            encounter.discovery_source = lead.provenance.discovery_source
+            encounter.source_priority = lead.provenance.source_priority
+            encounter.search_round = lead.provenance.search_round
+        if hasattr(lead, 'raw_search_rank'):
+            encounter.raw_search_rank = lead.raw_search_rank
         
         self.encounters.append(encounter)
 

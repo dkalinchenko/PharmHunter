@@ -253,71 +253,170 @@ def render_company_detail(company: CompanyRecord):
 
 
 def render_encounter_detail(encounter):
-    """Render detailed view of a single hunt encounter."""
+    """Render detailed view of a single hunt encounter - matches War Room layout."""
+    
+    # Lead Provenance Section (like War Room)
+    st.markdown("**Lead Provenance**")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Source", encounter.discovery_source or "Unknown")
+    with col2:
+        st.metric("Priority", f"P{encounter.source_priority}" if encounter.source_priority else "-")
+    with col3:
+        st.metric("Search Round", encounter.search_round or "-")
+    with col4:
+        st.metric("Original Rank", f"#{encounter.raw_search_rank}" if encounter.raw_search_rank else "-")
+    
+    if encounter.source_url:
+        st.caption(f"Source URL: [{encounter.source_url}]({encounter.source_url})")
+    
+    st.divider()
+    
+    # Two columns: Info and Reasoning (like War Room)
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### Scoring Details")
+        st.markdown("**Company Info**")
+        st.write(f"**Therapeutic Area:** {encounter.therapeutic_area or 'N/A'}")
+        st.write(f"**Phase:** {encounter.clinical_phase or 'N/A'}")
+        st.write(f"**Imaging Signal:** {encounter.imaging_signal or 'N/A'}")
         
-        # ICP Score
+        st.markdown("**Qualification**")
+        
+        # Score with progress bar (like War Room)
         if encounter.icp_score is not None:
-            st.metric("ICP Score", encounter.icp_score)
-            
-            # Score breakdown
-            if encounter.score_breakdown:
-                st.markdown("**Score Breakdown:**")
-                for criterion, score in encounter.score_breakdown.items():
-                    # Visual bar
-                    bar = "█" * (score // 5) + "░" * ((100 - score) // 5)
-                    st.write(f"{criterion}: {score}/100")
-                    st.caption(f"`{bar}`")
-            
-            # Scoring explanation
-            if encounter.score_explanation:
-                with st.expander("Why This Score?"):
-                    st.write(encounter.score_explanation)
+            st.progress(encounter.icp_score / 100, text=f"ICP Score: {encounter.icp_score}/100")
         
-        # Provenance
-        st.markdown("### Discovery Provenance")
-        if encounter.discovery_source:
-            st.write(f"**Source:** {encounter.discovery_source}")
-        if encounter.source_priority:
-            st.write(f"**Priority Tier:** {encounter.source_priority}")
-        if encounter.search_round:
-            st.write(f"**Search Round:** {encounter.search_round}")
-        if encounter.source_url:
-            st.write(f"**URL:** [{encounter.source_url}]({encounter.source_url})")
+        if encounter.is_qualified:
+            st.success("✅ Qualified for outreach")
+        else:
+            reason = encounter.disqualification_reason or "Score below threshold"
+            st.error(f"❌ Disqualified: {reason}")
+        
+        st.write(f"**Buying Signal:** {encounter.buying_signal or 'None identified'}")
+        st.write(f"**Recommended Offer:** {encounter.recommended_offer or 'N/A'}")
+        
+        # Score breakdown (like War Room)
+        if encounter.score_breakdown:
+            st.divider()
+            st.markdown("**Score Breakdown**")
+            for criterion, score in encounter.score_breakdown.items():
+                bar = "█" * (score // 5) + "░" * ((100 - score) // 5)
+                st.write(f"{criterion}: {score}/100")
+                st.caption(f"`{bar}`")
     
     with col2:
-        st.markdown("### Clinical Details")
+        st.markdown("**The Math (Reasoning Chain)**")
+        if encounter.reasoning_chain:
+            st.text_area(
+                "Analysis",
+                value=encounter.reasoning_chain,
+                height=300,
+                disabled=True,
+                key=f"reasoning_{encounter.hunt_id}_{id(encounter)}",
+                label_visibility="collapsed"
+            )
+        else:
+            st.info("No reasoning chain available")
         
-        if encounter.therapeutic_area:
-            st.write(f"**Therapeutic Area:** {encounter.therapeutic_area}")
-        if encounter.clinical_phase:
-            st.write(f"**Clinical Phase:** {encounter.clinical_phase}")
+        # Score explanation (if different from reasoning)
+        if encounter.score_explanation:
+            with st.expander("Score Explanation"):
+                st.write(encounter.score_explanation)
+    
+    # Only show draft sections if qualified and messages exist
+    if encounter.is_qualified and (encounter.email_body_primary or encounter.contact_persona):
+        st.divider()
         
-        # Drafted message
-        if encounter.email_subject or encounter.email_body:
-            st.markdown("### Outreach Message")
+        # Contact info (like War Room)
+        if encounter.contact_persona:
+            st.markdown("**Target Contact**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.write(f"**Persona:** {encounter.contact_persona}")
+            with col2:
+                st.write(f"**Name:** {encounter.contact_name or 'Not found'}")
+                st.write(f"**Title:** {encounter.contact_title or 'N/A'}")
+            with col3:
+                if encounter.contact_linkedin:
+                    st.write(f"**LinkedIn:** [View Profile]({encounter.contact_linkedin})")
+                else:
+                    st.write("**LinkedIn:** Not found")
             
-            if encounter.email_subject:
-                st.markdown("**Subject Line:**")
-                st.info(encounter.email_subject)
+            st.divider()
+        
+        # Draft emails (like War Room)
+        st.markdown("**The Draft (Outreach Package)**")
+        
+        # Subject lines
+        if encounter.email_subject_options:
+            st.selectbox(
+                "Subject Line Options",
+                options=encounter.email_subject_options,
+                key=f"subject_{encounter.hunt_id}_{id(encounter)}",
+                help="6 subject line variants"
+            )
+        
+        # Email tabs (like War Room)
+        if encounter.email_body_primary or encounter.email_variant_1:
+            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                "📧 Primary", "🎯 De-risk", "📈 Scale-up", "💼 LinkedIn", "🔄 Follow-up"
+            ])
             
-            if encounter.email_body:
-                st.markdown("**Email Body:**")
-                with st.container():
+            with tab1:
+                if encounter.email_body_primary:
                     st.text_area(
-                        "Email Content",
-                        value=encounter.email_body,
-                        height=200,
-                        key=f"encounter_email_{encounter.hunt_id}_{id(encounter)}",
-                        label_visibility="collapsed"
+                        "Primary Email",
+                        value=encounter.email_body_primary,
+                        height=300,
+                        key=f"primary_{encounter.hunt_id}_{id(encounter)}"
                     )
             
-            if encounter.personalization_notes:
-                with st.expander("Personalization Notes"):
-                    st.write(encounter.personalization_notes)
+            with tab2:
+                if encounter.email_variant_1:
+                    st.caption("Angle: De-risk proof-of-concept / endpoint integrity")
+                    st.text_area(
+                        "Variant 1",
+                        value=encounter.email_variant_1,
+                        height=250,
+                        key=f"var1_{encounter.hunt_id}_{id(encounter)}"
+                    )
+            
+            with tab3:
+                if encounter.email_variant_2:
+                    st.caption("Angle: Scale-up execution + site consistency")
+                    st.text_area(
+                        "Variant 2",
+                        value=encounter.email_variant_2,
+                        height=250,
+                        key=f"var2_{encounter.hunt_id}_{id(encounter)}"
+                    )
+            
+            with tab4:
+                if encounter.linkedin_message:
+                    char_count = len(encounter.linkedin_message)
+                    st.caption(f"Characters: {char_count}/350")
+                    st.text_area(
+                        "LinkedIn",
+                        value=encounter.linkedin_message,
+                        height=100,
+                        key=f"linkedin_{encounter.hunt_id}_{id(encounter)}"
+                    )
+            
+            with tab5:
+                if encounter.follow_up_email:
+                    st.caption("For 5-7 business days later")
+                    st.text_area(
+                        "Follow-up",
+                        value=encounter.follow_up_email,
+                        height=200,
+                        key=f"followup_{encounter.hunt_id}_{id(encounter)}"
+                    )
+        
+        # Personalization notes
+        if encounter.personalization_notes:
+            with st.expander("Personalization Notes"):
+                st.write(encounter.personalization_notes)
 
 
 def render_hunt_timeline(hunt_summary: dict):

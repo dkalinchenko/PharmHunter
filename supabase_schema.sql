@@ -137,8 +137,37 @@ DROP TRIGGER IF EXISTS update_companies_updated_at ON companies;
 CREATE TRIGGER update_companies_updated_at BEFORE UPDATE ON companies
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Add missing columns to encounters table for complete War Room data capture
+ALTER TABLE encounters 
+  ADD COLUMN IF NOT EXISTS imaging_signal TEXT,
+  ADD COLUMN IF NOT EXISTS buying_signal TEXT,
+  ADD COLUMN IF NOT EXISTS recommended_offer TEXT,
+  ADD COLUMN IF NOT EXISTS disqualification_reason TEXT,
+  ADD COLUMN IF NOT EXISTS reasoning_chain TEXT,
+  ADD COLUMN IF NOT EXISTS scoring_timestamp TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS raw_search_rank INTEGER,
+  
+  -- Contact info
+  ADD COLUMN IF NOT EXISTS contact_persona TEXT,
+  ADD COLUMN IF NOT EXISTS contact_name TEXT,
+  ADD COLUMN IF NOT EXISTS contact_title TEXT,
+  ADD COLUMN IF NOT EXISTS contact_linkedin TEXT,
+  
+  -- Email variants (new columns for complete message history)
+  ADD COLUMN IF NOT EXISTS email_subject_options TEXT[],  -- Array of 6 subjects
+  ADD COLUMN IF NOT EXISTS email_body_primary TEXT,
+  ADD COLUMN IF NOT EXISTS email_variant_1 TEXT,
+  ADD COLUMN IF NOT EXISTS email_variant_2 TEXT,
+  ADD COLUMN IF NOT EXISTS linkedin_message TEXT,
+  ADD COLUMN IF NOT EXISTS follow_up_email TEXT;
+
+-- Drop old single email columns if they exist (replaced by new structure)
+ALTER TABLE encounters 
+  DROP COLUMN IF EXISTS email_subject,
+  DROP COLUMN IF EXISTS email_body;
+
 -- Success message
 DO $$
 BEGIN
-  RAISE NOTICE 'PharmHunter database schema created successfully!';
+  RAISE NOTICE 'PharmHunter database schema created/updated successfully!';
 END $$;
