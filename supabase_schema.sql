@@ -102,6 +102,12 @@ ALTER TABLE hunts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE encounters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE metadata ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist (to allow re-running this script)
+DROP POLICY IF EXISTS "Allow all operations on companies" ON companies;
+DROP POLICY IF EXISTS "Allow all operations on hunts" ON hunts;
+DROP POLICY IF EXISTS "Allow all operations on encounters" ON encounters;
+DROP POLICY IF EXISTS "Allow all operations on metadata" ON metadata;
+
 -- Create permissive policies (allows all authenticated operations)
 CREATE POLICY "Allow all operations on companies" ON companies
   FOR ALL USING (true) WITH CHECK (true);
