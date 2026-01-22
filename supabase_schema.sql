@@ -130,6 +130,9 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+-- Drop existing trigger if it exists (to allow re-running this script)
+DROP TRIGGER IF EXISTS update_companies_updated_at ON companies;
+
 -- Trigger to auto-update updated_at on companies table
 CREATE TRIGGER update_companies_updated_at BEFORE UPDATE ON companies
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
