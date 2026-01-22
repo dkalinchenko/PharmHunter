@@ -302,6 +302,14 @@ def run_hunt_pipeline(params: dict):
         st.session_state["drafted_leads"] = drafted_leads
         st.session_state["pipeline_state"] = pipeline_state
         
+        # Save detailed encounter records with messages to history
+        print("Saving encounter details (messages, scoring) to history...")
+        encounters_added = history_service.add_drafted_companies(
+            drafted_leads,
+            hunt_id=pipeline_state.hunt_id
+        )
+        print(f"Added {encounters_added} encounter records with full details")
+        
         print(f"\n{'='*60}")
         print(f"HUNT COMPLETE - {len(drafted_leads)} leads ready")
         print(f"{'='*60}\n")

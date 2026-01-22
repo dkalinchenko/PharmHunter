@@ -46,7 +46,44 @@ CREATE TABLE IF NOT EXISTS hunts (
 CREATE INDEX IF NOT EXISTS idx_hunts_timestamp ON hunts(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_hunts_hunt_id ON hunts(hunt_id);
 
--- Table 3: Metadata (optional)
+-- Table 3: Hunt Encounters
+-- Stores detailed records of each company encounter in a hunt
+CREATE TABLE IF NOT EXISTS encounters (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  hunt_id TEXT NOT NULL,
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+  
+  -- Basic lead info
+  therapeutic_area TEXT,
+  clinical_phase TEXT,
+  source_url TEXT,
+  
+  -- Scoring details (from Analyst)
+  icp_score INTEGER,
+  score_breakdown JSONB,
+  score_explanation TEXT,
+  is_qualified BOOLEAN NOT NULL DEFAULT false,
+  
+  -- Drafted messages (from Scribe)
+  email_subject TEXT,
+  email_body TEXT,
+  personalization_notes TEXT,
+  
+  -- Provenance
+  discovery_source TEXT,
+  source_priority TEXT,
+  search_round INTEGER,
+  
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Indexes for encounter queries
+CREATE INDEX IF NOT EXISTS idx_encounters_company_id ON encounters(company_id);
+CREATE INDEX IF NOT EXISTS idx_encounters_hunt_id ON encounters(hunt_id);
+CREATE INDEX IF NOT EXISTS idx_encounters_timestamp ON encounters(timestamp DESC);
+
+-- Table 4: Metadata (optional)
 -- For version tracking and system configuration
 CREATE TABLE IF NOT EXISTS metadata (
   key TEXT PRIMARY KEY,
@@ -62,6 +99,7 @@ ON CONFLICT (key) DO NOTHING;
 -- For now, allow all operations (can be restricted later for multi-tenancy)
 ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE hunts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE encounters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE metadata ENABLE ROW LEVEL SECURITY;
 
 -- Create permissive policies (allows all authenticated operations)
@@ -69,6 +107,9 @@ CREATE POLICY "Allow all operations on companies" ON companies
   FOR ALL USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow all operations on hunts" ON hunts
+  FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all operations on encounters" ON encounters
   FOR ALL USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow all operations on metadata" ON metadata

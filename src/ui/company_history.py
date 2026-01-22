@@ -225,16 +225,99 @@ def render_company_detail(company: CompanyRecord):
         st.write(f"All scores: {scores_str}")
         st.write(f"Average score: {sum(company.icp_scores) / len(company.icp_scores):.0f}")
     
-    # Hunt appearances
-    st.markdown("**Appeared in Hunts**")
-    for hunt_id in company.hunt_ids:
-        st.caption(f"- {hunt_id[:16]}...")
+    st.divider()
+    
+    # Encounter history - the rich details from each hunt
+    if company.encounters:
+        st.subheader(f"Hunt Encounters ({len(company.encounters)})")
+        st.caption("Detailed records from each hunt where this company was discovered")
+        
+        # Sort encounters by timestamp (newest first)
+        sorted_encounters = sorted(company.encounters, key=lambda e: e.timestamp, reverse=True)
+        
+        for i, encounter in enumerate(sorted_encounters, 1):
+            with st.expander(
+                f"**Encounter {i}:** {encounter.timestamp.strftime('%Y-%m-%d %H:%M')} "
+                f"(Hunt: {encounter.hunt_id[:8]}...) "
+                f"{'✅ Qualified' if encounter.is_qualified else '❌ Disqualified'}"
+            ):
+                render_encounter_detail(encounter)
+    else:
+        st.info("No detailed encounter data available for this company. Encounters are saved for hunts going forward.")
     
     # Source URLs
     if company.source_urls:
-        with st.expander("Source URLs"):
+        with st.expander("All Source URLs"):
             for url in company.source_urls:
                 st.write(f"- [{url}]({url})")
+
+
+def render_encounter_detail(encounter):
+    """Render detailed view of a single hunt encounter."""
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### Scoring Details")
+        
+        # ICP Score
+        if encounter.icp_score is not None:
+            st.metric("ICP Score", encounter.icp_score)
+            
+            # Score breakdown
+            if encounter.score_breakdown:
+                st.markdown("**Score Breakdown:**")
+                for criterion, score in encounter.score_breakdown.items():
+                    # Visual bar
+                    bar = "█" * (score // 5) + "░" * ((100 - score) // 5)
+                    st.write(f"{criterion}: {score}/100")
+                    st.caption(f"`{bar}`")
+            
+            # Scoring explanation
+            if encounter.score_explanation:
+                with st.expander("Why This Score?"):
+                    st.write(encounter.score_explanation)
+        
+        # Provenance
+        st.markdown("### Discovery Provenance")
+        if encounter.discovery_source:
+            st.write(f"**Source:** {encounter.discovery_source}")
+        if encounter.source_priority:
+            st.write(f"**Priority Tier:** {encounter.source_priority}")
+        if encounter.search_round:
+            st.write(f"**Search Round:** {encounter.search_round}")
+        if encounter.source_url:
+            st.write(f"**URL:** [{encounter.source_url}]({encounter.source_url})")
+    
+    with col2:
+        st.markdown("### Clinical Details")
+        
+        if encounter.therapeutic_area:
+            st.write(f"**Therapeutic Area:** {encounter.therapeutic_area}")
+        if encounter.clinical_phase:
+            st.write(f"**Clinical Phase:** {encounter.clinical_phase}")
+        
+        # Drafted message
+        if encounter.email_subject or encounter.email_body:
+            st.markdown("### Outreach Message")
+            
+            if encounter.email_subject:
+                st.markdown("**Subject Line:**")
+                st.info(encounter.email_subject)
+            
+            if encounter.email_body:
+                st.markdown("**Email Body:**")
+                with st.container():
+                    st.text_area(
+                        "Email Content",
+                        value=encounter.email_body,
+                        height=200,
+                        key=f"encounter_email_{encounter.hunt_id}_{id(encounter)}",
+                        label_visibility="collapsed"
+                    )
+            
+            if encounter.personalization_notes:
+                with st.expander("Personalization Notes"):
+                    st.write(encounter.personalization_notes)
 
 
 def render_hunt_timeline(hunt_summary: dict):

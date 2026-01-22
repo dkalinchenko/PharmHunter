@@ -86,10 +86,12 @@ class CompanyHistoryService:
             # Load all companies
             companies_result = self.supabase.table("companies").select("*").execute()
             
-            # Convert Supabase records to CompanyRecord objects
+            # Create a map of company_id -> CompanyRecord for encounter attachment
+            company_map = {}
             companies = []
+            
             for record in companies_result.data:
-                companies.append(CompanyRecord(
+                company = CompanyRecord(
                     company_name=record["company_name"],
                     normalized_name=record["normalized_name"],
                     website=record.get("website"),
@@ -103,7 +105,38 @@ class CompanyHistoryService:
                     best_score=record.get("best_score"),
                     was_qualified=record["was_qualified"],
                     source_urls=record["source_urls"],
-                ))
+                )
+                companies.append(company)
+                company_map[record["id"]] = company
+            
+            # Load encounters and attach to companies
+            try:
+                from ..models.company_history import HuntEncounter
+                encounters_result = self.supabase.table("encounters").select("*").execute()
+                
+                for enc_record in encounters_result.data:
+                    company_id = enc_record["company_id"]
+                    if company_id in company_map:
+                        encounter = HuntEncounter(
+                            hunt_id=enc_record["hunt_id"],
+                            timestamp=enc_record["timestamp"],
+                            therapeutic_area=enc_record.get("therapeutic_area"),
+                            clinical_phase=enc_record.get("clinical_phase"),
+                            source_url=enc_record.get("source_url"),
+                            icp_score=enc_record.get("icp_score"),
+                            score_breakdown=enc_record.get("score_breakdown"),
+                            score_explanation=enc_record.get("score_explanation"),
+                            is_qualified=enc_record.get("is_qualified", False),
+                            email_subject=enc_record.get("email_subject"),
+                            email_body=enc_record.get("email_body"),
+                            personalization_notes=enc_record.get("personalization_notes"),
+                            discovery_source=enc_record.get("discovery_source"),
+                            source_priority=enc_record.get("source_priority"),
+                            search_round=enc_record.get("search_round"),
+                        )
+                        company_map[company_id].encounters.append(encounter)
+            except Exception as e:
+                print(f"Warning: Could not load encounters: {e}")
             
             # Load hunt summaries
             hunts_result = self.supabase.table("hunts").select("*").execute()
@@ -151,7 +184,7 @@ class CompanyHistoryService:
         # This method is kept for interface compatibility
         return True
     
-    def _upsert_company(self, company: CompanyRecord) -> bool:
+    def _upsert_company(self, company: CompanyRecord) -> Optional[str]:
         """
         Insert or update a single company in Supabase.
         
@@ -159,7 +192,7 @@ class CompanyHistoryService:
             company: CompanyRecord to upsert
             
         Returns:
-            True if successful
+            Company ID (UUID) if successful, None otherwise
         """
         try:
             data = {
@@ -179,14 +212,55 @@ class CompanyHistoryService:
             }
             
             # Upsert based on normalized_name (unique constraint)
-            self.supabase.table("companies").upsert(
+            result = self.supabase.table("companies").upsert(
                 data,
                 on_conflict="normalized_name"
             ).execute()
             
-            return True
+            # Return the company ID
+            if result.data and len(result.data) > 0:
+                return result.data[0]["id"]
+            
+            return None
         except Exception as e:
             print(f"Error upserting company {company.company_name}: {e}")
+            return None
+    
+    def _upsert_encounter(self, company_id: str, encounter: Any) -> bool:
+        """
+        Insert an encounter record for a company.
+        
+        Args:
+            company_id: UUID of the company
+            encounter: HuntEncounter object
+            
+        Returns:
+            True if successful
+        """
+        try:
+            data = {
+                "company_id": company_id,
+                "hunt_id": encounter.hunt_id,
+                "timestamp": encounter.timestamp.isoformat(),
+                "therapeutic_area": encounter.therapeutic_area,
+                "clinical_phase": encounter.clinical_phase,
+                "source_url": encounter.source_url,
+                "icp_score": encounter.icp_score,
+                "score_breakdown": encounter.score_breakdown,
+                "score_explanation": encounter.score_explanation,
+                "is_qualified": encounter.is_qualified,
+                "email_subject": encounter.email_subject,
+                "email_body": encounter.email_body,
+                "personalization_notes": encounter.personalization_notes,
+                "discovery_source": encounter.discovery_source,
+                "source_priority": encounter.source_priority,
+                "search_round": encounter.search_round,
+            }
+            
+            self.supabase.table("encounters").insert(data).execute()
+            return True
+        except Exception as e:
+            print(f"Error inserting encounter: {e}")
             return False
     
     def is_duplicate(
@@ -344,6 +418,88 @@ class CompanyHistoryService:
         self._history = None
         
         return new_count
+    
+    def add_drafted_companies(
+        self,
+        drafted_leads: List[Any],
+        hunt_id: str,
+    ) -> int:
+        """
+        Add detailed encounter records from drafted leads to existing companies.
+        
+        This should be called after the Scribe phase to add the full details
+        (messages, scoring breakdowns, provenance) for each company.
+        
+        Args:
+            drafted_leads: List of DraftedLead objects
+            hunt_id: ID of the hunt these leads came from
+            
+        Returns:
+            Number of encounters added
+        """
+        encounters_added = 0
+        
+        for lead in drafted_leads:
+            normalized = normalize_company_name(lead.company_name)
+            
+            try:
+                # Get the company from Supabase
+                result = self.supabase.table("companies").select("id").eq("normalized_name", normalized).execute()
+                
+                if result.data and len(result.data) > 0:
+                    company_id = result.data[0]["id"]
+                    
+                    # Create encounter object
+                    from ..models.company_history import HuntEncounter
+                    encounter = HuntEncounter(
+                        hunt_id=hunt_id,
+                        timestamp=datetime.now(),
+                    )
+                    
+                    # Extract all available data from the lead
+                    if hasattr(lead, 'therapeutic_area'):
+                        encounter.therapeutic_area = lead.therapeutic_area
+                    if hasattr(lead, 'clinical_phase'):
+                        encounter.clinical_phase = lead.clinical_phase
+                    if hasattr(lead, 'source_url'):
+                        encounter.source_url = lead.source_url
+                    
+                    # Scoring details
+                    if hasattr(lead, 'icp_score'):
+                        encounter.icp_score = lead.icp_score
+                    if hasattr(lead, 'score_breakdown'):
+                        encounter.score_breakdown = lead.score_breakdown
+                    if hasattr(lead, 'score_explanation'):
+                        encounter.score_explanation = lead.score_explanation
+                    if hasattr(lead, 'is_qualified'):
+                        encounter.is_qualified = lead.is_qualified
+                    
+                    # Drafted messages
+                    if hasattr(lead, 'email_subject'):
+                        encounter.email_subject = lead.email_subject
+                    if hasattr(lead, 'email_body'):
+                        encounter.email_body = lead.email_body
+                    if hasattr(lead, 'personalization_notes'):
+                        encounter.personalization_notes = lead.personalization_notes
+                    
+                    # Provenance
+                    if hasattr(lead, 'provenance') and lead.provenance:
+                        encounter.discovery_source = lead.provenance.discovery_source
+                        encounter.source_priority = lead.provenance.source_priority
+                        encounter.search_round = lead.provenance.search_round
+                    
+                    # Save encounter to Supabase
+                    if self._upsert_encounter(company_id, encounter):
+                        encounters_added += 1
+                else:
+                    print(f"Warning: Company {lead.company_name} not found in Supabase during encounter add")
+            except Exception as e:
+                print(f"Error adding encounter for {lead.company_name}: {e}")
+        
+        # Clear cache to force reload on next access
+        self._history = None
+        
+        return encounters_added
     
     def get_statistics(self) -> Dict[str, Any]:
         """

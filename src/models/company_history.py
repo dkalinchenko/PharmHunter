@@ -5,6 +5,34 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
+class HuntEncounter(BaseModel):
+    """Details of a single encounter with a company in a hunt."""
+    
+    hunt_id: str = Field(..., description="ID of the hunt where encountered")
+    timestamp: datetime = Field(default_factory=datetime.now, description="When encountered")
+    
+    # Basic lead info
+    therapeutic_area: Optional[str] = Field(None, description="Therapeutic area from this hunt")
+    clinical_phase: Optional[str] = Field(None, description="Clinical phase from this hunt")
+    source_url: Optional[str] = Field(None, description="Source URL from this hunt")
+    
+    # Scoring details (from Analyst)
+    icp_score: Optional[int] = Field(None, description="ICP score from this hunt")
+    score_breakdown: Optional[Dict[str, int]] = Field(None, description="Detailed score breakdown")
+    score_explanation: Optional[str] = Field(None, description="Why this score was given")
+    is_qualified: bool = Field(False, description="Whether qualified in this hunt")
+    
+    # Drafted messages (from Scribe)
+    email_subject: Optional[str] = Field(None, description="Email subject line")
+    email_body: Optional[str] = Field(None, description="Email body content")
+    personalization_notes: Optional[str] = Field(None, description="Personalization rationale")
+    
+    # Provenance
+    discovery_source: Optional[str] = Field(None, description="Where discovered (e.g., 'ClinicalTrials.gov')")
+    source_priority: Optional[str] = Field(None, description="Source priority tier")
+    search_round: Optional[int] = Field(None, description="Which search round found it")
+
+
 class CompanyRecord(BaseModel):
     """Record of a company in history."""
     
@@ -21,6 +49,9 @@ class CompanyRecord(BaseModel):
     best_score: Optional[int] = Field(None, description="Highest ICP score achieved")
     was_qualified: bool = Field(False, description="Whether ever qualified (score >= 75)")
     source_urls: List[str] = Field(default_factory=list, description="Source URLs where found")
+    
+    # NEW: Detailed encounter history
+    encounters: List[HuntEncounter] = Field(default_factory=list, description="Detailed history of each encounter")
     
     def update_from_lead(self, lead: Any, hunt_id: str):
         """Update record with data from a new lead discovery."""
@@ -57,6 +88,48 @@ class CompanyRecord(BaseModel):
         # Update website if we have a better one
         if hasattr(lead, 'website') and lead.website and not self.website:
             self.website = lead.website
+    
+    def add_encounter(self, lead: Any, hunt_id: str):
+        """Add a detailed encounter record from a drafted lead."""
+        encounter = HuntEncounter(
+            hunt_id=hunt_id,
+            timestamp=datetime.now(),
+        )
+        
+        # Extract all available data from the lead
+        if hasattr(lead, 'therapeutic_area'):
+            encounter.therapeutic_area = lead.therapeutic_area
+        if hasattr(lead, 'clinical_phase'):
+            encounter.clinical_phase = lead.clinical_phase
+        if hasattr(lead, 'source_url'):
+            encounter.source_url = lead.source_url
+        
+        # Scoring details
+        if hasattr(lead, 'icp_score'):
+            encounter.icp_score = lead.icp_score
+        if hasattr(lead, 'score_breakdown'):
+            encounter.score_breakdown = lead.score_breakdown
+        if hasattr(lead, 'score_explanation'):
+            encounter.score_explanation = lead.score_explanation
+        if hasattr(lead, 'is_qualified'):
+            encounter.is_qualified = lead.is_qualified
+        
+        # Drafted messages
+        if hasattr(lead, 'email_subject'):
+            encounter.email_subject = lead.email_subject
+        if hasattr(lead, 'email_body'):
+            encounter.email_body = lead.email_body
+        if hasattr(lead, 'personalization_notes'):
+            encounter.personalization_notes = lead.personalization_notes
+        
+        # Provenance
+        if hasattr(lead, 'provenance'):
+            if lead.provenance:
+                encounter.discovery_source = lead.provenance.discovery_source
+                encounter.source_priority = lead.provenance.source_priority
+                encounter.search_round = lead.provenance.search_round
+        
+        self.encounters.append(encounter)
 
 
 class HuntSummary(BaseModel):

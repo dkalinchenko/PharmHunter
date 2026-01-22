@@ -12,6 +12,7 @@ from .company_history import (
     CompanyRecord,
     HuntSummary,
     CompanyHistory,
+    HuntEncounter,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "CompanyRecord",
     "HuntSummary",
     "CompanyHistory",
+    "HuntEncounter",
 ]
